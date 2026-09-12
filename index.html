@@ -578,8 +578,6 @@
             "TEXTILE": "0.00000"
         };
 
-        // Explicit quality order. This is kept separately so Up/Down ordering
-        // is reliable and does not depend on JavaScript object-key ordering.
         let qualityOrder = [
             "MICRO MODAL BRIEF 101",
             "MICRO MODAL BOXER 102",
@@ -597,7 +595,6 @@
             return ordered.slice();
         }
 
-        // Parallel tracking object for GSM
         const qualityGsmData = {
             "MICRO MODAL BRIEF 101": "0",
             "MICRO MODAL BOXER 102": "0",
@@ -605,7 +602,6 @@
             "TEXTILE": "0"
         };
 
-        // Custom config mapping trackers for Dynamic Folding Component Values
         const qualityFoldingNameData = {
             "MICRO MODAL BRIEF 101": "RIB",
             "MICRO MODAL BOXER 102": "",
@@ -620,7 +616,6 @@
             "TEXTILE": "0.00000"
         };
 
-        // Parallel tracking object for Remarks mapping
         const qualityRemarksData = {
             "MICRO MODAL BRIEF 101": "",
             "MICRO MODAL BOXER 102": "",
@@ -628,7 +623,6 @@
             "TEXTILE": ""
         };
 
-        // Parallel tracking objects for Textile specific fields to prevent overwriting
         const qualityTextileStdConsData = {
             "MICRO MODAL BRIEF 101": "",
             "MICRO MODAL BOXER 102": "",
@@ -643,16 +637,11 @@
             "TEXTILE": ""
         };
 
-        // Parallel configuration trackers for Polo specific optional fields
         const qualityPoloPocketData = {};
         const qualityPoloByPlaketData = {};
-
-        // Parallel configuration trackers for Pant specific optional fields
         const qualityPantSidePocketData = {};
         const qualityPantBackPocketData = {};
 
-        // Per-quality Total Consumption component selector configuration.
-        // Legacy records use this default so existing behaviour is preserved.
         const DEFAULT_TCONS_CONFIG = {
             body: true,
             folding: false,
@@ -697,16 +686,11 @@
         function getTConsConfig(quality) {
             const existing = qualityTConsConfigData[quality];
             if (!existing || typeof existing !== "object") return getDefaultTConsConfig();
-
             const config = { ...getDefaultTConsConfig(), ...existing };
-
-            // Backward compatibility: older configs had one combined Pocket + Plaket option.
-            // If that legacy option exists without the new explicit Plaket key, preserve its meaning.
             if (Object.prototype.hasOwnProperty.call(existing, "pocket") &&
                 !Object.prototype.hasOwnProperty.call(existing, "plaket")) {
                 config.plaket = existing.pocket === true;
             }
-
             return config;
         }
 
@@ -717,22 +701,96 @@
                 .map(key => TCONS_COMPONENT_LABELS[key]);
         }
 
-        // Parallel array for History data
         let historyData = [];
-        
-        // Track the index of the history entry currently being edited (-1 means no active edit)
         let editIndex = -1;
-
-        // Auto-increment counter to uniquely track original creation order of rows
         let nextRowOriginalId = 1;
 
-        // Helper function to round distributed weight values to 50g (0.050 kg) increments
         function roundTo50g(val) {
             if (!val || isNaN(val)) return 0;
             return parseFloat((Math.round(val / 0.050) * 0.050).toFixed(3));
         }
 
-        // Helper function to populate the quality dropdown based on qualityData keys
+        // ==========================================
+        // EXACT TOTAL DISTRIBUTION HELPERS
+        // ==========================================
+        function distributeExactValues(weights, targetTotal, step = 0.001) {
+            const n = weights.length;
+            if (n === 0) return [];
+            if (targetTotal <= 0) return new Array(n).fill(0);
+
+            const sumWeights = weights.reduce((acc, w) => acc + w, 0);
+            if (sumWeights <= 0) {
+                const perRow = targetTotal / n;
+                let discrete = new Array(n).fill(0).map(() => Math.floor((perRow / step)) * step);
+                let currentSum = discrete.reduce((acc, v) => acc + v, 0);
+                let diff = Math.round((targetTotal - currentSum) / step);
+                for (let i = 0; i < diff; i++) {
+                    discrete[i % n] = parseFloat((discrete[i % n] + step).toFixed(3));
+                }
+                return discrete;
+            }
+
+            const unrounded = weights.map(w => (w / sumWeights) * targetTotal);
+            let discrete = unrounded.map(v => Math.floor(v / step) * step);
+            let currentSum = discrete.reduce((acc, v) => acc + v, 0);
+            let remainderUnits = Math.round((targetTotal - currentSum) / step);
+
+            const remainders = unrounded.map((v, i) => ({
+                index: i,
+                rem: (v / step) - Math.floor(v / step)
+            }));
+            remainders.sort((a, b) => b.rem - a.rem);
+
+            for (let i = 0; i < remainderUnits && i < remainders.length; i++) {
+                const idx = remainders[i].index;
+                discrete[idx] = parseFloat((discrete[idx] + step).toFixed(3));
+            }
+
+            return discrete.map(v => parseFloat(v.toFixed(3)));
+        }
+
+        function distributeExact50g(picsArr, targetTotal) {
+            const n = picsArr.length;
+            if (n === 0) return [];
+            if (targetTotal <= 0) return new Array(n).fill(0);
+
+            const sumPics = picsArr.reduce((acc, p) => acc + p, 0);
+            if (sumPics <= 0) {
+                return new Array(n).fill(0);
+            }
+
+            const exactVals = picsArr.map(p => (p / sumPics) * targetTotal);
+            let roundedVals = exactVals.map(v => roundTo50g(v));
+            let sumRounded = roundedVals.reduce((acc, v) => acc + v, 0);
+            let diff = parseFloat((targetTotal - sumRounded).toFixed(3));
+
+            if (Math.abs(diff) >= 0.049) {
+                const sortedIndices = exactVals.map((v, idx) => ({
+                    idx: idx,
+                    diffVal: v - roundedVals[idx]
+                }));
+
+                if (diff > 0) {
+                    sortedIndices.sort((a, b) => b.diffVal - a.diffVal);
+                    let steps = Math.round(diff / 0.050);
+                    for (let i = 0; i < steps; i++) {
+                        let targetIdx = sortedIndices[i % n].idx;
+                        roundedVals[targetIdx] = parseFloat((roundedVals[targetIdx] + 0.050).toFixed(3));
+                    }
+                } else if (diff < 0) {
+                    sortedIndices.sort((a, b) => a.diffVal - b.diffVal);
+                    let steps = Math.round(Math.abs(diff) / 0.050);
+                    for (let i = 0; i < steps; i++) {
+                        let targetIdx = sortedIndices[i % n].idx;
+                        if (roundedVals[targetIdx] >= 0.050) {
+                            roundedVals[targetIdx] = parseFloat((roundedVals[targetIdx] - 0.050).toFixed(3));
+                        }
+                    }
+                }
+            }
+            return roundedVals;
+        }
+
         function renderQualityDropdown(selectedVal) {
             const select = document.getElementById('globalQuality');
             if (!select) return;
@@ -751,7 +809,6 @@
             }
         }
 
-        // Modal for Reordering Qualities
         function openQualityOrderModal() {
             renderQualityOrderList();
             document.getElementById('qualityOrderModal').classList.remove('hidden');
@@ -818,7 +875,6 @@
             keys[targetIndex] = currentQuality;
             qualityOrder = keys;
 
-            // Keep the currently selected quality unchanged while only its position moves.
             const select = document.getElementById('globalQuality');
             const curVal = select ? select.value : currentQuality;
 
@@ -827,7 +883,6 @@
             saveSharedConfig();
         }
 
-        // Edit/Rename an existing quality and retain all settings & history linkages
         function editQualityName(qualityToEdit) {
             const currentSelected = qualityToEdit || document.getElementById('globalQuality').value;
             if (!currentSelected) return;
@@ -900,7 +955,6 @@
             Object.assign(qualityTextileStdConsData, reorderedTextileStdCons);
             Object.assign(qualityTextileTotalMetersData, reorderedTextileTotalMeters);
 
-            // Update history entries referencing the old name
             if (historyData && historyData.length > 0) {
                 historyData.forEach(entry => {
                     if (entry.quality === currentSelected) {
@@ -919,7 +973,6 @@
             saveSharedConfig();
         }
 
-        // Helper function to compute Historical Average B.Cons and T.Cons for a specific quality and size
         function getHistoricalAverages(quality, size) {
             if (!quality || !size || !historyData || historyData.length === 0) return null;
             const normQuality = quality.trim().toUpperCase();
@@ -933,7 +986,7 @@
             const isPantActive = normQuality.includes('PANT');
 
             historyData.forEach((entry, idx) => {
-                if (editIndex !== -1 && idx === editIndex) return; // Skip currently editing entry
+                if (editIndex !== -1 && idx === editIndex) return;
                 if ((entry.quality || "").trim().toUpperCase() !== normQuality) return;
                 if (!entry.items || entry.items.length === 0) return;
 
@@ -1356,7 +1409,6 @@
             el.className = `text-center text-xs font-semibold mt-4 min-h-4 ${isError ? 'text-red-600' : 'text-gray-500'}`;
         }
 
-        // The Firebase module calls this after authentication is ready.
         window.startCloudSession = initializeCloudSession;
         window.handleCloudSignedOut = handleSignedOut;
         window.setCloudAuthStatus = setAuthStatus;
@@ -1398,8 +1450,6 @@
                 const el = document.getElementById(`tconsCfg_${key}`);
                 config[key] = !!el?.checked;
             });
-            // Body is the safest legacy/default base; allow users to turn it off,
-            // but ensure an explicit config is always stored for this quality.
             qualityTConsConfigData[quality] = config;
             closeTConsModal();
             calculateTotals(false);
@@ -1924,7 +1974,7 @@
                 renderQualityDropdown(upperQuality);
                 loadConsumption();
                 saveState();
-            saveSharedConfig();
+                saveSharedConfig();
             }
         }
 
@@ -1949,7 +1999,7 @@
                     renderQualityDropdown();
                     loadConsumption();
                     saveState();
-            saveSharedConfig();
+                    saveSharedConfig();
                 }
             }
         }
@@ -1988,7 +2038,6 @@
                 tbody.appendChild(item.element);
             });
 
-            // Recalculate totals without resetting slip numbers so they stay tied to their sorted row
             calculateTotals(false);
             saveState();
         }
@@ -1996,7 +2045,6 @@
         function calculateTotals(autoRenumberSlips = false) {
             const rows = document.querySelectorAll('#itemRows tr');
             
-            // Instantly restore clean original user body weights prior to running new scaling logic passes
             rows.forEach(row => {
                 const bodyWtInput = row.querySelector('.row-bodywt');
                 if (bodyWtInput && bodyWtInput.dataset.origBodyWt !== undefined) {
@@ -2019,7 +2067,6 @@
                 }
             });
 
-            // Sequential Slip Numbers calculation mapped to original entry/creation sequence
             let totalSlipsSum = 0;
             const rowsArray = Array.from(rows);
 
@@ -2082,7 +2129,6 @@
             let totalCollarCuffSum = 0;
             let totalMainFabricSum = 0;
 
-            // Fetch metrics globally from the top inputs
             const stdCons = parseFloat(document.getElementById('consumptionInput').value) || 0;
             const stdGsm = parseFloat(document.getElementById('gsmInput').value) || 0;
             const fabricGsm = parseFloat(document.getElementById('fabricGsmInput').value) || 0;
@@ -2090,7 +2136,6 @@
             const selectEl = document.getElementById('globalQuality');
             const currentQuality = selectEl ? selectEl.value : "";
             
-            // Map the current textile inputs to the isolated active custom quality parameters safely
             if (currentQuality) {
                 qualityTextileStdConsData[currentQuality] = document.getElementById('textileStdConsInput').value;
                 qualityTextileTotalMetersData[currentQuality] = document.getElementById('textileTotalMetersInput').value;
@@ -2154,7 +2199,6 @@
             const pantHasSidePocket = qualityPantSidePocketData[currentQuality] !== false;
             const pantHasBackPocket = qualityPantBackPocketData[currentQuality] !== false;
 
-            // Manage Polo config row visibility panel
             const poloOptionsRow = document.getElementById('poloOptionsRow');
             if (poloOptionsRow) {
                 if (!isTextileActive && isPoloActive) {
@@ -2166,7 +2210,6 @@
                 }
             }
 
-            // Manage Pant config row visibility panel
             const pantOptionsRow = document.getElementById('pantOptionsRow');
             if (pantOptionsRow) {
                 if (!isTextileActive && isPantActive) {
@@ -2193,7 +2236,6 @@
                 globalTotalRibDiv.style.display = (!isTextileActive && isGrsActive) ? 'flex' : 'none';
             }
 
-            // Dynamically manage standard headers labels visibility bounds
             const th = document.getElementById('foldingHeaderTh');
             if (th) {
                 const fName = qualityFoldingNameData[currentQuality] || "";
@@ -2266,29 +2308,26 @@
             if (backPocketTfootTd) (!isTextileActive && isPantActive && pantHasBackPocket) ? backPocketTfootTd.classList.remove('hidden') : backPocketTfootTd.classList.add('hidden');
             if (collarCuffTfootTd) (!isTextileActive && isPoloActive) ? collarCuffTfootTd.classList.remove('hidden') : collarCuffTfootTd.classList.add('hidden');
 
-            // Update top calculated single fabric consumption strictly mapped to 5 decimals
             let singleCalculatedCons = 0;
             if (stdGsm > 0) {
                 singleCalculatedCons = (stdCons / stdGsm) * fabricGsm;
             }
             document.getElementById('headerCalculatedCons').innerText = singleCalculatedCons.toFixed(5);
 
-            // Fetch global batch weights for calculations
-            const totalPocketGlobal = isPoloActive && poloHasPocket ? (parseFloat(document.getElementById('poloTotalPocketInput').value) || 0) : 0;
-            const totalPlaketGlobal = isPoloActive ? (parseFloat(document.getElementById('poloTotalPlaketInput').value) || 0) : 0;
-            const totalByPlaketGlobal = isPoloActive && poloHasByPlaket ? (parseFloat(document.getElementById('poloTotalByPlaketInput').value) || 0) : 0;
-            const totalCollarCuffGlobal = isPoloActive ? (parseFloat(document.getElementById('poloTotalCollarCuffInput').value) || 0) : 0;
+            let totalPocketGlobal = isPoloActive && poloHasPocket ? (parseFloat(document.getElementById('poloTotalPocketInput').value) || 0) : 0;
+            let totalPlaketGlobal = isPoloActive ? (parseFloat(document.getElementById('poloTotalPlaketInput').value) || 0) : 0;
+            let totalByPlaketGlobal = isPoloActive && poloHasByPlaket ? (parseFloat(document.getElementById('poloTotalByPlaketInput').value) || 0) : 0;
+            let totalCollarCuffGlobal = isPoloActive ? (parseFloat(document.getElementById('poloTotalCollarCuffInput').value) || 0) : 0;
             
-            const totalSidePocketGlobal = isPantActive && pantHasSidePocket ? (parseFloat(document.getElementById('pantTotalSidePocketInput').value) || 0) : 0;
-            const totalBackPocketGlobal = isPantActive && pantHasBackPocket ? (parseFloat(document.getElementById('pantTotalBackPocketInput').value) || 0) : 0;
+            let totalSidePocketGlobal = isPantActive && pantHasSidePocket ? (parseFloat(document.getElementById('pantTotalSidePocketInput').value) || 0) : 0;
+            let totalBackPocketGlobal = isPantActive && pantHasBackPocket ? (parseFloat(document.getElementById('pantTotalBackPocketInput').value) || 0) : 0;
 
-            const globalWastage = parseFloat(document.getElementById('globalWastageInput').value) || 0;
-            const globalMukpat = parseFloat(document.getElementById('globalMukpatInput').value) || 0;
-            const globalByPlaketWastage = isPoloActive && poloHasByPlaket ? (parseFloat(document.getElementById('poloTotalByPlaketWastageInput').value) || 0) : 0;
-            const globalRibWastage = isGrsActive ? (parseFloat(document.getElementById('globalRibWastageInput').value) || 0) : 0;
-            const globalRibTotal = isGrsActive ? (parseFloat(document.getElementById('globalTotalRibInput').value) || 0) : 0;
+            let globalWastage = parseFloat(document.getElementById('globalWastageInput').value) || 0;
+            let globalMukpat = parseFloat(document.getElementById('globalMukpatInput').value) || 0;
+            let globalByPlaketWastage = isPoloActive && poloHasByPlaket ? (parseFloat(document.getElementById('poloTotalByPlaketWastageInput').value) || 0) : 0;
+            let globalRibWastage = isGrsActive ? (parseFloat(document.getElementById('globalRibWastageInput').value) || 0) : 0;
+            let globalRibTotal = isGrsActive ? (parseFloat(document.getElementById('globalTotalRibInput').value) || 0) : 0;
 
-            // Pre-loop pass to sum up total pieces required for proportional sharing calculation
             let tempTotalPicsSum = 0;
             rows.forEach(row => {
                 tempTotalPicsSum += parseFloat(row.querySelector('.row-pics').value) || 0;
@@ -2335,7 +2374,6 @@
                 textileFactor = tempTotalWeightSum > 0 ? textileTotalMeters / tempTotalWeightSum : 0;
             }
 
-            // Weight Adjustment Allocation Pre-pass Factor Computation logic
             let adjWeightValue = parseFloat(document.getElementById('adjWeightInput').value) || 0;
             let adjAction = document.getElementById('adjActionSelect').value;
             let adjFactor = 0;
@@ -2467,16 +2505,59 @@
                 }
             }
 
+            // Refresh effective values after adjustment
+            const effectiveWastage = parseFloat(document.getElementById('globalWastageInput').value) || 0;
+            const effectiveMukpat = parseFloat(document.getElementById('globalMukpatInput').value) || 0;
+            const effectiveByPlaketWastage = isPoloActive && poloHasByPlaket ? (parseFloat(document.getElementById('poloTotalByPlaketWastageInput').value) || 0) : 0;
+            const effectiveRibWastage = isGrsActive ? (parseFloat(document.getElementById('globalRibWastageInput').value) || 0) : 0;
+            const effectiveRibTotal = isGrsActive ? (parseFloat(document.getElementById('globalTotalRibInput').value) || 0) : 0;
+            const effectivePocketGlobal = isPoloActive && poloHasPocket ? (parseFloat(document.getElementById('poloTotalPocketInput').value) || 0) : 0;
+            const effectivePlaketGlobal = isPoloActive ? (parseFloat(document.getElementById('poloTotalPlaketInput').value) || 0) : 0;
+            const effectiveByPlaketGlobal = isPoloActive && poloHasByPlaket ? (parseFloat(document.getElementById('poloTotalByPlaketInput').value) || 0) : 0;
+            const effectiveCollarCuffGlobal = isPoloActive ? (parseFloat(document.getElementById('poloTotalCollarCuffInput').value) || 0) : 0;
+            const effectiveSidePocketGlobal = isPantActive && pantHasSidePocket ? (parseFloat(document.getElementById('pantTotalSidePocketInput').value) || 0) : 0;
+            const effectiveBackPocketGlobal = isPantActive && pantHasBackPocket ? (parseFloat(document.getElementById('pantTotalBackPocketInput').value) || 0) : 0;
+
+            // Arrays for Pre-computation exact distribution across rows
+            const allPics = [];
+            const rawWeightsForMeters = [];
             rows.forEach(row => {
+                const p = parseFloat(row.querySelector('.row-pics').value) || 0;
+                allPics.push(p);
+
+                const bodyWtInput = row.querySelector('.row-bodywt');
+                let bw = isCheckActive ? (parseFloat(bodyWtInput.dataset.weight) || 0) : (parseFloat(bodyWtInput.value) || 0);
+                let rwWst = tempTotalPicsSum > 0 ? (p / tempTotalPicsSum) * effectiveWastage : 0;
+                rawWeightsForMeters.push(bw + rwWst);
+            });
+
+            // Exact Textile Meter Distributions
+            let exactTotalMetersRows = [];
+            if (isTextileActive && isCheckActive && textileTotalMeters > 0) {
+                exactTotalMetersRows = distributeExactValues(rawWeightsForMeters, textileTotalMeters, 0.001);
+            }
+
+            // Exact 50g distributions for Global Weights
+            const distLayWastage = distributeExact50g(allPics, effectiveWastage);
+            const distMukpat = distributeExact50g(allPics, effectiveMukpat);
+            const distByPlaketWastage = distributeExact50g(allPics, effectiveByPlaketWastage);
+            const distRibWastage = distributeExact50g(allPics, effectiveRibWastage);
+            const distGlobalRib = distributeExact50g(allPics, effectiveRibTotal);
+            const distPocket = distributeExact50g(allPics, effectivePocketGlobal);
+            const distPlaket = distributeExact50g(allPics, effectivePlaketGlobal);
+            const distByPlaket = distributeExact50g(allPics, effectiveByPlaketGlobal);
+            const distCollarCuff = distributeExact50g(allPics, effectiveCollarCuffGlobal);
+            const distSidePocket = distributeExact50g(allPics, effectiveSidePocketGlobal);
+            const distBackPocket = distributeExact50g(allPics, effectiveBackPocketGlobal);
+
+            rows.forEach((row, rowIndex) => {
                 const sizeVal = (row.querySelector('.row-size').value || "").trim().toUpperCase();
                 const pics = parseFloat(row.querySelector('.row-pics').value) || 0;
                 const bodyWtInput = row.querySelector('.row-bodywt');
                 let bodywt = isCheckActive ? (parseFloat(bodyWtInput.dataset.weight) || 0) : (parseFloat(bodyWtInput.value) || 0);
 
-                // Fetch historical benchmarks for this row's size
                 const histBench = getHistoricalAverages(currentQuality, sizeVal);
 
-                // Force layout state clean synchronization parameters to explicitly prevent shattered bounds
                 const foldingTd = row.querySelector('.row-folding');
                 const ribTd = row.querySelector('.row-ribwt-td');
                 const pocketTd = row.querySelector('.row-pocket');
@@ -2490,15 +2571,17 @@
                     if (pocketTd) pocketTd.classList.add('hidden');
                     if (sidePocketTd) sidePocketTd.classList.add('hidden');
                     if (backPocketTd) backPocketTd.classList.add('hidden');
-                    if (foldingTd) foldingTd.classList.add('hidden');
                     if (collarCuffTd) collarCuffTd.classList.add('hidden');
 
-                    let rowWastage = tempTotalPicsSum > 0 ? (pics / tempTotalPicsSum) * globalWastage : 0;
+                    let rowWastage = tempTotalPicsSum > 0 ? (pics / tempTotalPicsSum) * effectiveWastage : 0;
 
                     if (isCheckActive) {
-                        const rowBodyMtr = parseFloat((textileFactor * bodywt).toFixed(3));
-                        const rowWastageMtr = parseFloat((textileFactor * rowWastage).toFixed(3));
-                        const rowTotalMtr = rowBodyMtr + rowWastageMtr;
+                        let rowTotalMtr = exactTotalMetersRows[rowIndex] !== undefined 
+                            ? exactTotalMetersRows[rowIndex] 
+                            : parseFloat((textileFactor * (bodywt + rowWastage)).toFixed(3));
+
+                        const rowBodyMtr = (bodywt + rowWastage) > 0 ? parseFloat((rowTotalMtr * (bodywt / (bodywt + rowWastage))).toFixed(3)) : 0;
+                        const rowWastageMtr = parseFloat((rowTotalMtr - rowBodyMtr).toFixed(3));
 
                         bodyWtInput.value = rowBodyMtr.toFixed(3);
                         row.querySelector('.row-wastage').innerText = rowWastageMtr.toFixed(3);
@@ -2515,7 +2598,7 @@
                         totalWastageSum += rowWastageMtr;
                         totalWeightSum += rowTotalMtr;
                     } else {
-                        rowWastage = roundTo50g(rowWastage);
+                        rowWastage = distLayWastage[rowIndex] !== undefined ? distLayWastage[rowIndex] : roundTo50g(rowWastage);
                         const rowWastageRounded = parseFloat(rowWastage.toFixed(3));
                         const rowTotalWeightRounded = parseFloat(bodywt.toFixed(3)) + rowWastageRounded;
 
@@ -2539,10 +2622,8 @@
                     const fName = qualityFoldingNameData[currentQuality] || "";
                     const fGm = parseFloat(qualityFoldingGmData[currentQuality]) || 0;
 
-                    // Keep Folding/Piping and By-Plaket as separate T.Cons components.
                     let foldingOnlyWt = isFoldingActive ? (pics * fGm) : 0;
-                    let byPlaketWt = (isPoloActive && poloHasByPlaket && tempTotalPicsSum > 0)
-                        ? (pics / tempTotalPicsSum) * totalByPlaketGlobal : 0;
+                    let byPlaketWt = (isPoloActive && poloHasByPlaket) ? (distByPlaket[rowIndex] || 0) : 0;
                     let foldingWt = foldingOnlyWt + byPlaketWt;
 
                     if (foldingTd) {
@@ -2553,14 +2634,13 @@
                         }
                     }
 
-                    // Dual-mode global/manual Rib Wt mechanism
                     let ribWt = 0;
                     const ribInput = row.querySelector('.row-ribwt');
                     if (ribTd && ribInput) {
                         if (isGrsActive) {
                             ribTd.classList.remove('hidden');
-                            if (globalRibTotal > 0) {
-                                ribWt = tempTotalPicsSum > 0 ? (pics / tempTotalPicsSum) * globalRibTotal : 0;
+                            if (effectiveRibTotal > 0) {
+                                ribWt = distGlobalRib[rowIndex] || 0;
                                 ribInput.disabled = true;
                                 ribInput.classList.add('bg-gray-100');
                             } else {
@@ -2574,16 +2654,14 @@
                         }
                     }
 
-                    // Separate Polo Pocket and Plaket calculations. They remain combined only for
-                    // the visible row/total weight, while T.Cons can select them independently.
                     let pocketWt = 0;
                     let plaketWt = 0;
                     let pktPlktWt = 0;
                     if (pocketTd) {
                         if (isPoloActive) {
                             pocketTd.classList.remove('hidden');
-                            plaketWt = tempTotalPicsSum > 0 ? (pics / tempTotalPicsSum) * totalPlaketGlobal : 0;
-                            pocketWt = (poloHasPocket && tempTotalPicsSum > 0) ? (pics / tempTotalPicsSum) * totalPocketGlobal : 0;
+                            plaketWt = distPlaket[rowIndex] || 0;
+                            pocketWt = (poloHasPocket) ? (distPocket[rowIndex] || 0) : 0;
                             pktPlktWt = pocketWt + plaketWt;
                         } else {
                             pocketTd.classList.add('hidden');
@@ -2591,14 +2669,13 @@
                         }
                     }
 
-                    // Dual-mode Side Pocket weight mechanism
                     let sidePocketWt = 0;
                     const sidePocketInput = row.querySelector('.row-sidepocket');
                     if (sidePocketTd && sidePocketInput) {
                         if (isPantActive && pantHasSidePocket) {
                             sidePocketTd.classList.remove('hidden');
-                            if (totalSidePocketGlobal > 0) {
-                                sidePocketWt = tempTotalPicsSum > 0 ? (pics / tempTotalPicsSum) * totalSidePocketGlobal : 0;
+                            if (effectiveSidePocketGlobal > 0) {
+                                sidePocketWt = distSidePocket[rowIndex] || 0;
                                 sidePocketInput.disabled = true;
                                 sidePocketInput.classList.add('bg-gray-100');
                             } else {
@@ -2612,14 +2689,13 @@
                         }
                     }
 
-                    // Dual-mode Back Pocket weight mechanism
                     let backPocketWt = 0;
                     const backPocketInput = row.querySelector('.row-backpocket');
                     if (backPocketTd && backPocketInput) {
                         if (isPantActive && pantHasBackPocket) {
                             backPocketTd.classList.remove('hidden');
-                            if (totalBackPocketGlobal > 0) {
-                                backPocketWt = tempTotalPicsSum > 0 ? (pics / tempTotalPicsSum) * totalBackPocketGlobal : 0;
+                            if (effectiveBackPocketGlobal > 0) {
+                                backPocketWt = distBackPocket[rowIndex] || 0;
                                 backPocketInput.disabled = true;
                                 backPocketInput.classList.add('bg-gray-100');
                             } else {
@@ -2637,39 +2713,26 @@
                     if (collarCuffTd) {
                         if (isPoloActive) {
                             collarCuffTd.classList.remove('hidden');
-                            collarCuffWt = tempTotalPicsSum > 0 ? (pics / tempTotalPicsSum) * totalCollarCuffGlobal : 0;
+                            collarCuffWt = distCollarCuff[rowIndex] || 0;
                         } else {
                             collarCuffTd.classList.add('hidden');
                             collarCuffTd.innerText = '0.000';
                         }
                     }
 
-                    // Distributed component shares. Keep every T.Cons component separate so a
-                    // selected component can never be counted again through another component.
-                    let layWastagePart = tempTotalPicsSum > 0 ? (pics / tempTotalPicsSum) * globalWastage : 0;
-                    let byPlaketWastagePart = tempTotalPicsSum > 0 ? (pics / tempTotalPicsSum) * globalByPlaketWastage : 0;
-                    let ribWastagePart = tempTotalPicsSum > 0 ? (pics / tempTotalPicsSum) * globalRibWastage : 0;
-                    let rowMukpatPart = tempTotalPicsSum > 0 ? (pics / tempTotalPicsSum) * globalMukpat : 0;
+                    let layWastagePart = distLayWastage[rowIndex] || 0;
+                    let byPlaketWastagePart = (isPoloActive && poloHasByPlaket) ? (distByPlaketWastage[rowIndex] || 0) : 0;
+                    let ribWastagePart = isGrsActive ? (distRibWastage[rowIndex] || 0) : 0;
+                    let rowMukpatPart = distMukpat[rowIndex] || 0;
 
-                    let rowWastagePart = layWastagePart + byPlaketWastagePart + ribWastagePart;
                     let mainWastageOnlyPart = layWastagePart;
                     let mainByPlaketWastagePart = byPlaketWastagePart;
                     let mainRibWastagePart = ribWastagePart;
                     let mainMukpatPart = rowMukpatPart;
 
-                    // Apply proportional adjustment modifiers
                     if (adjWeightValue > 0) {
                         let chkBody = document.getElementById('adjTargetBodyWt').checked;
-                        let chkWastage = document.getElementById('adjTargetWastage').checked;
-                        let chkRibWastage = document.getElementById('adjTargetRibWastage') ? document.getElementById('adjTargetRibWastage').checked : false;
-                        let chkMukpat = document.getElementById('adjTargetMukpat').checked;
-                        let chkRib = document.getElementById('adjTargetRib').checked;
-                        let chkPocket = document.getElementById('adjTargetPocket').checked;
-                        let chkSidePkt = document.getElementById('adjTargetSidePocket').checked;
-                        let chkBackPkt = document.getElementById('adjTargetBackPocket').checked;
-                        let chkCollar = document.getElementById('adjTargetCollar').checked;
                         let adjSign = (adjAction === 'ADD') ? 1 : -1;
-
                         if (chkBody) {
                             if (bodyWtInput.dataset.origBodyWt === undefined) {
                                 bodyWtInput.dataset.origBodyWt = bodywt;
@@ -2678,68 +2741,26 @@
                             bodywt = roundTo50g(baseWt + baseWt * adjFactor * adjSign);
                             bodyWtInput.value = bodywt.toFixed(3);
                         }
-                        if (chkWastage) {
-                            let layShare = tempTotalPicsSum > 0 ? (pics / tempTotalPicsSum) * globalWastage : 0;
-                            let byPlaketShare = tempTotalPicsSum > 0 ? (pics / tempTotalPicsSum) * globalByPlaketWastage : 0;
-                            layWastagePart += layShare * adjFactor * adjSign;
-                            byPlaketWastagePart += byPlaketShare * adjFactor * adjSign;
-                            rowWastagePart = layWastagePart + byPlaketWastagePart + ribWastagePart;
-                            mainWastageOnlyPart = layWastagePart;
-                            mainByPlaketWastagePart = byPlaketWastagePart;
-                        }
-                        if (chkRibWastage && isGrsActive) {
-                            ribWastagePart += (tempTotalPicsSum > 0 ? (pics / tempTotalPicsSum) * globalRibWastage : 0) * adjFactor * adjSign;
-                            rowWastagePart = layWastagePart + byPlaketWastagePart + ribWastagePart;
-                            mainRibWastagePart = ribWastagePart;
-                        }
-                        if (chkMukpat) {
-                            rowMukpatPart += rowMukpatPart * adjFactor * adjSign;
-                            mainMukpatPart += mainMukpatPart * adjFactor * adjSign;
-                        }
-                        if (chkRib && isGrsActive) {
-                            ribWt += ribWt * adjFactor * adjSign;
-                        }
-                        if (chkPocket && isPoloActive) {
-                                pocketWt += pocketWt * adjFactor * adjSign;
-                                plaketWt += plaketWt * adjFactor * adjSign;
-                                pktPlktWt = pocketWt + plaketWt;
-                            }
-                        if (chkSidePkt && isPantActive && pantHasSidePocket) {
-                            sidePktWt += sidePktWt * adjFactor * adjSign;
-                        }
-                        if (chkBackPkt && isPantActive && pantHasBackPocket) {
-                            backPktWt += backPktWt * adjFactor * adjSign;
-                        }
-                        if (chkCollar && isPoloActive) collarCuffWt += collarCuffWt * adjFactor * adjSign;
                     }
 
-                    // Convert distributed and adjusted weights (Including folding to 50g increments)
                     foldingOnlyWt = roundTo50g(foldingOnlyWt);
                     byPlaketWt = roundTo50g(byPlaketWt);
                     foldingWt = foldingOnlyWt + byPlaketWt;
-                    if (globalRibTotal > 0) ribWt = roundTo50g(ribWt);
+                    if (effectiveRibTotal > 0) ribWt = roundTo50g(ribWt);
                     pocketWt = roundTo50g(pocketWt);
                     plaketWt = roundTo50g(plaketWt);
                     pktPlktWt = pocketWt + plaketWt;
-                    if (totalSidePocketGlobal > 0) sidePocketWt = roundTo50g(sidePocketWt);
-                    if (totalBackPocketGlobal > 0) backPocketWt = roundTo50g(backPocketWt);
+                    if (effectiveSidePocketGlobal > 0) sidePocketWt = roundTo50g(sidePocketWt);
+                    if (effectiveBackPocketGlobal > 0) backPocketWt = roundTo50g(backPocketWt);
                     collarCuffWt = roundTo50g(collarCuffWt);
-                    layWastagePart = roundTo50g(layWastagePart);
-                    byPlaketWastagePart = roundTo50g(byPlaketWastagePart);
-                    ribWastagePart = roundTo50g(ribWastagePart);
-                    rowWastagePart = layWastagePart + byPlaketWastagePart + ribWastagePart;
-                    rowMukpatPart = roundTo50g(rowMukpatPart);
-                    mainWastageOnlyPart = layWastagePart;
-                    mainByPlaketWastagePart = byPlaketWastagePart;
-                    mainRibWastagePart = ribWastagePart;
-                    mainMukpatPart = rowMukpatPart;
 
-                    // Unconditionally push live adjusted parameters text displays into inner target inputs/cells
+                    let rowWastagePart = layWastagePart + byPlaketWastagePart + ribWastagePart;
+
                     if (foldingTd && (isFoldingActive || (isPoloActive && poloHasByPlaket))) foldingTd.innerText = foldingWt.toFixed(3);
-                    if (ribInput && isGrsActive && globalRibTotal > 0) ribInput.value = ribWt.toFixed(3);
+                    if (ribInput && isGrsActive && effectiveRibTotal > 0) ribInput.value = ribWt.toFixed(3);
                     if (pocketTd && isPoloActive) pocketTd.innerText = pktPlktWt.toFixed(3);
-                    if (sidePocketInput && isPantActive && pantHasSidePocket && totalSidePocketGlobal > 0) sidePocketInput.value = sidePocketWt.toFixed(3);
-                    if (backPocketInput && isPantActive && pantHasBackPocket && totalBackPocketGlobal > 0) backPocketInput.value = backPocketWt.toFixed(3);
+                    if (sidePocketInput && isPantActive && pantHasSidePocket && effectiveSidePocketGlobal > 0) sidePocketInput.value = sidePocketWt.toFixed(3);
+                    if (backPocketInput && isPantActive && pantHasBackPocket && effectiveBackPocketGlobal > 0) backPocketInput.value = backPocketWt.toFixed(3);
                     if (collarCuffTd && isPoloActive) collarCuffTd.innerText = collarCuffWt.toFixed(3);
 
                     let rowWastage = rowWastagePart + rowMukpatPart;
@@ -2755,12 +2776,9 @@
 
                     row.querySelector('.row-wastage').innerText = rWastage.toFixed(3);
 
-                    // Calculate total weight for this row
                     const rowTotalWeight = rBody + rFolding + rRib + rPktPlkt + rSidePkt + rBackPkt + rCollarCuff + rWastage;
                     row.querySelector('.row-total').innerText = rowTotalWeight.toFixed(3);
 
-                    // Consumption calculation zone: component-selected T.Cons
-                    // Each quality keeps its own inclusion rules.
                     const tConsConfig = getTConsConfig(currentQuality);
                     let selectedWeight = 0;
                     if (tConsConfig.body) selectedWeight += rBody;
@@ -2779,14 +2797,12 @@
 
                     let mainFabricRowWeight = selectedWeight;
 
-                    // Display regular weights per pc (mapped to 5 decimal places)
                     const grandBCons = pics > 0 ? rBody / pics : 0;
                     const grandTCons = pics > 0 ? mainFabricRowWeight / pics : 0;
 
                     row.querySelector('.row-bcons').innerText = grandBCons.toFixed(5);
                     row.querySelector('.row-tcons').innerText = grandTCons.toFixed(5);
 
-                    // Render Real-time Size Benchmark Comparison from History
                     const bConsRefEl = row.querySelector('.row-bcons-ref');
                     const tConsRefEl = row.querySelector('.row-tcons-ref');
 
@@ -2807,7 +2823,6 @@
                         if (tConsRefEl) tConsRefEl.innerHTML = "";
                     }
 
-                    // Accumulate values for grand totals
                     totalMainFabricSum += mainFabricRowWeight;
                     totalPicsSum += pics;
                     totalBodyWtSum += rBody;
@@ -2822,7 +2837,6 @@
                 }
             });
 
-            // Calculate grand total averages based on accumulated sums
             let grandBCons = totalPicsSum > 0 ? (totalBodyWtSum / totalPicsSum) : 0;
             let grandTCons = totalPicsSum > 0 ? (totalMainFabricSum / totalPicsSum) : 0;
 
@@ -2843,7 +2857,6 @@
                 document.getElementById('totalBCons').innerText = avgBodyMtrPerPc.toFixed(5);
                 document.getElementById('totalTCons').innerText = avgTotalMtrPerPc.toFixed(5);
                 
-                // Variance logic tracking for Textile meters mode
                 let diff = avgTotalMtrPerPc - textileStdCons;
                 let varianceEl = document.getElementById('consVariance');
                 if (totalPicsSum > 0 && textileStdCons > 0) {
@@ -2885,14 +2898,12 @@
                     document.getElementById('totalBCons').innerText = grandBCons.toFixed(5);
                     document.getElementById('totalTCons').innerText = grandTCons.toFixed(5);
 
-                    // Calculate variance to 5 decimal formats safely and apply dynamic user coloration
                     let diff = grandTCons - singleCalculatedCons;
                     let varianceEl = document.getElementById('consVariance');
                     if (totalPicsSum > 0 && stdGsm > 0) {
                         let diffStr = (diff >= 0 ? "+" : "") + diff.toFixed(5);
                         
                         if (diff < 0) {
-                            // Low condition: Always Yellow/Amber regardless of tolerance limit
                             if (Math.abs(diff) > 0.0025) {
                                 varianceEl.innerText = `(${diffStr} LOW - NOT ALLOWED)`;
                             } else {
@@ -2900,7 +2911,6 @@
                             }
                             varianceEl.className = "text-[10px] font-bold text-amber-500 mt-0.5 block text-center";
                         } else if (diff > 0) {
-                            // High condition: Green if allowed, Red if not allowed
                             if (diff > 0.0025) {
                                 varianceEl.innerText = `(${diffStr} HIGH - NOT ALLOWED)`;
                                 varianceEl.className = "text-[10px] font-bold text-red-600 mt-0.5 block text-center";
@@ -2909,7 +2919,6 @@
                                 varianceEl.className = "text-[10px] font-bold text-green-600 mt-0.5 block text-center";
                             }
                         } else {
-                            // Exactly matched condition: Always Green
                             varianceEl.innerText = "(MATCHED)";
                             varianceEl.className = "text-[10px] font-bold text-green-600 mt-0.5 block text-center";
                         }
@@ -2919,7 +2928,6 @@
                 }
             }
 
-            // Bind the grand footer averages text indicators dynamically
             if (document.getElementById('totalFoldingDisplay')) document.getElementById('totalFoldingDisplay').innerText = totalFoldingSum.toFixed(3);
             if (document.getElementById('totalRibWtDisplay')) document.getElementById('totalRibWtDisplay').innerText = totalRibWtSum.toFixed(3);
             if (document.getElementById('totalPocketDisplay')) document.getElementById('totalPocketDisplay').innerText = totalPocketSum.toFixed(3);
@@ -2930,7 +2938,6 @@
             saveState();
         }
 
-        // Direct Download of Standalone Responsive Document File
         function downloadDocument() {
             const select = document.getElementById('globalQuality');
             const currentQuality = select.value || "QUALITY";
@@ -2963,7 +2970,6 @@
             const adj = getCleanVal('adjWeightInput');
             const adjAction = document.getElementById('adjActionSelect').value;
 
-            // Extract table headers that are currently visible
             let ths = [];
             document.querySelectorAll('table thead th').forEach(th => {
                 if (!th.classList.contains('no-print') && !th.classList.contains('hidden') && th.offsetParent !== null) {
@@ -2971,7 +2977,6 @@
                 }
             });
 
-            // Extract table row values
             let rowsHtml = "";
             document.querySelectorAll('#itemRows tr').forEach(tr => {
                 let tdsHtml = "";
@@ -2982,7 +2987,6 @@
                         if (input) {
                             val = input.value.trim() || "-";
                         } else {
-                            // Extract main text (ignoring sub-references)
                             const bCons = td.querySelector('.row-bcons');
                             const tCons = td.querySelector('.row-tcons');
                             if (bCons) val = bCons.innerText.trim();
@@ -2995,7 +2999,6 @@
                 rowsHtml += `<tr>${tdsHtml}</tr>`;
             });
 
-            // Extract table footer values
             let tfootHtml = "";
             document.querySelectorAll('table tfoot td').forEach(td => {
                 if (!td.classList.contains('no-print') && !td.classList.contains('hidden') && td.offsetParent !== null) {
@@ -3005,7 +3008,6 @@
                 }
             });
 
-            // Build metrics overview html
             let metricsDetails = "";
             if (isTextileActive) {
                 metricsDetails = `
@@ -3039,7 +3041,6 @@
             if (isPantActive && backPkt > 0) extraWeightsHtml += `<span>BACK PKT: <b>${backPkt.toFixed(3)}</b></span>`;
             if (!isTextileActive && adj > 0) extraWeightsHtml += `<span style="color: #1d4ed8;">ADJUST WT: <b>${adjAction === 'ADD' ? '+' : '-'}${adj.toFixed(3)} KG</b></span>`;
 
-            // Build dynamic filename from Quality Remarks or auto fallback
             let finalFileName = "";
             const cleanRemarks = remarks.replace(/[/\\?%*:|"<>]/g, '_').trim();
             const cleanQuality = currentQuality.replace(/[/\\?%*:|"<>]/g, '_').trim();
@@ -3096,7 +3097,6 @@
             </tfoot>
         </table>
     </div>
-\n\n
 </body>
 </html>`;
 
@@ -3358,8 +3358,8 @@
                             }
                             if (chkRib && isGrsActive) ribWt += ribWt * adjFactor * adjSign;
                             if (chkPocket && isPoloActive) pocketWt += pocketWt * adjFactor * adjSign;
-                        if (chkPocket && isPoloActive) plaketWt += plaketWt * adjFactor * adjSign;
-                        if (chkPocket && isPoloActive) pktPlktWt = pocketWt + plaketWt;
+                            if (chkPocket && isPoloActive) plaketWt += plaketWt * adjFactor * adjSign;
+                            if (chkPocket && isPoloActive) pktPlktWt = pocketWt + plaketWt;
                             if (chkSidePkt && isPantActive && pantHasSidePocket) sidePktWt += sidePktWt * adjFactor * adjSign;
                             if (chkBackPkt && isPantActive && pantHasBackPocket) backPktWt += backPktWt * adjFactor * adjSign;
                             if (chkCollar && isPoloActive) collarCuffWt += collarCuffWt * adjFactor * adjSign;
@@ -3499,7 +3499,7 @@
 
             let extraWeightsHtml = `<span>WASTAGE WT: <b>${adjWst.toFixed(3)}</b></span>`;
             if (!isTextileActive) extraWeightsHtml += `<span>MUKPAT WT: <b>${adjMkpt.toFixed(3)}</b></span>`;
-            if (isGrsActive && adjRibWst > 0) extraWeightsHtml += `<span>RIB WASTAGE: <b>${adjRibWst.toFixed(3)}</b></span>`;
+            if (isGrsActive && ribWst > 0) extraWeightsHtml += `<span>RIB WASTAGE: <b>${adjRibWst.toFixed(3)}</b></span>`;
             if (isGrsActive && adjRibTotal > 0) extraWeightsHtml += `<span>RIB WT: <b>${adjRibTotal.toFixed(3)}</b></span>`;
             if (isPoloActive && adjPkt > 0) extraWeightsHtml += `<span>PKT WT: <b>${adjPkt.toFixed(3)}</b></span>`;
             if (isPoloActive && adjPlkt > 0) extraWeightsHtml += `<span>PLKT WT: <b>${adjPlkt.toFixed(3)}</b></span>`;
@@ -3560,7 +3560,9 @@
                 ${rowsHtml}
             </tbody>
             <tfoot>
-                ${tfootHtml}
+                <tr>
+                    ${tfootHtml}
+                </tr>
             </tfoot>
         </table>
     </div>
@@ -3578,7 +3580,6 @@
             setTimeout(() => URL.revokeObjectURL(url), 1000);
         }
 
-        // Export Data to JSON File
         function exportData() {
             const rows = document.querySelectorAll('#itemRows tr');
             const items = [];
@@ -3652,12 +3653,10 @@
             document.body.removeChild(a);
         }
 
-        // Trigger hidden file input for Import
         function triggerImport() {
             document.getElementById('importFile').click();
         }
 
-        // Load Data from JSON File
         function importData(event) {
             const file = event.target.files[0];
             if (!file) return;
