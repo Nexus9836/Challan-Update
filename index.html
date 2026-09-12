@@ -56,7 +56,21 @@
         .cloud-status.syncing{border-color:#fde68a;background:#fffbeb;color:#b45309}
         .cloud-status.syncing .dot{background:#f59e0b;animation:pulseCloud 1s infinite}
         @keyframes pulseCloud{50%{opacity:.35;transform:scale(.75)}}
-</style>
+
+        /* Vertical Row-by-Row Black & White Contrast Striping for Easy Focus */
+        #itemRows tr:nth-child(odd) {
+            background-color: #ffffff;
+        }
+        #itemRows tr:nth-child(even) {
+            background-color: #f1f5f9;
+        }
+        #itemRows tr:nth-child(even) input:not([disabled]) {
+            background-color: #ffffff;
+        }
+        #itemRows tr:hover {
+            background-color: #e2e8f0 !important;
+        }
+    </style>
 </head>
 <body class="bg-gray-100 p-2 sm:p-6">
 
@@ -350,10 +364,10 @@
         </div>
 
         <!-- Items Table Container for Horizontal Scroll on Mobile -->
-        <div class="overflow-x-auto w-full border border-gray-200 rounded-md mb-6">
+        <div class="overflow-x-auto w-full border border-gray-200 rounded-md mb-6 shadow-sm">
             <table class="w-full text-left border-collapse min-w-[1100px]">
                 <thead>
-                    <tr class="bg-gray-200">
+                    <tr class="bg-gray-200 text-gray-800">
                         <th class="p-3 border border-gray-300 text-center w-28">Slip No</th>
                         <th class="p-3 border border-gray-300 text-center w-20">Size</th>
                         <th class="p-3 border border-gray-300 text-center w-20">Slips</th>
@@ -1418,7 +1432,36 @@
             const quality = document.getElementById('globalQuality')?.value || "";
             if (!container) return;
             const config = getTConsConfig(quality);
-            container.innerHTML = Object.keys(TCONS_COMPONENT_LABELS).map(key => `
+
+            const qUpper = quality.toUpperCase();
+            const isTextile = qUpper.includes('TEXTILE');
+            const isPolo = qUpper.includes('POLO');
+            const isPant = qUpper.includes('PANT');
+            const isGrs = qUpper.includes('GRS') || qUpper.includes('SWEAT');
+            const hasFolding = (qualityFoldingNameData[quality] || "").trim() !== "" && parseFloat(qualityFoldingGmData[quality]) > 0;
+            const poloPocket = isPolo && (qualityPoloPocketData[quality] !== false);
+            const poloByPlaket = isPolo && (qualityPoloByPlaketData[quality] !== false);
+            const pantSide = isPant && (qualityPantSidePocketData[quality] !== false);
+            const pantBack = isPant && (qualityPantBackPocketData[quality] !== false);
+
+            // Filter out components that are not applicable to the currently selected quality
+            const activeKeys = Object.keys(TCONS_COMPONENT_LABELS).filter(key => {
+                if (key === 'body') return true;
+                if (key === 'wastage') return true;
+                if (isTextile) return false;
+
+                if (key === 'mukpat') return true;
+                if (key === 'folding') return hasFolding;
+                if (key === 'rib' || key === 'ribWastage') return isGrs;
+                if (key === 'pocket') return poloPocket;
+                if (key === 'plaket' || key === 'collar') return isPolo;
+                if (key === 'byPlaket' || key === 'byPlaketWastage') return poloByPlaket;
+                if (key === 'sidePkt') return pantSide;
+                if (key === 'backPkt') return pantBack;
+                return true;
+            });
+
+            container.innerHTML = activeKeys.map(key => `
                 <label class="flex items-center justify-between gap-3 p-2 rounded border border-gray-200 hover:bg-purple-50 cursor-pointer">
                     <span>${TCONS_COMPONENT_LABELS[key]}</span>
                     <input type="checkbox" id="tconsCfg_${key}" ${config[key] ? 'checked' : ''} class="w-4 h-4 accent-purple-600">
@@ -1445,10 +1488,12 @@
         function saveTConsConfig() {
             const quality = document.getElementById('globalQuality')?.value || "";
             if (!quality) return;
-            const config = {};
+            const config = getTConsConfig(quality);
             Object.keys(TCONS_COMPONENT_LABELS).forEach(key => {
                 const el = document.getElementById(`tconsCfg_${key}`);
-                config[key] = !!el?.checked;
+                if (el) {
+                    config[key] = !!el.checked;
+                }
             });
             qualityTConsConfigData[quality] = config;
             closeTConsModal();
@@ -3742,6 +3787,10 @@
                                 <td class="p-2 border border-gray-300 text-center font-semibold row-collarcuff hidden">0.000</td>
                                 <td class="p-2 border border-gray-300 text-center font-semibold row-wastage">0.000</td>
                                 <td class="p-2 border border-gray-300 text-center font-semibold row-total">0.000</td>
+                                <td class="p-2 border border-gray-300 text-center bg-blue-50/50">
+                                    <div class="font-bold text-blue-600 row-bcons">0.00000</div>
+                                    <div class="row-bcons-ref no-print leading-tight"></div>
+                                </td>
                                 <td class="p-2 border border-gray-300 text-center bg-blue-50/50">
                                     <div class="font-bold text-blue-600 row-bcons">0.00000</div>
                                     <div class="row-bcons-ref no-print leading-tight"></div>
