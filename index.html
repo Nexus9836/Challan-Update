@@ -116,6 +116,7 @@
                     <select id="globalQuality" onchange="loadConsumption()" class="border border-gray-300 focus:outline-none p-1 rounded no-print bg-white min-w-[200px] text-center font-semibold">
                         <option value="MICRO MODAL BRIEF 101">MICRO MODAL BRIEF 101</option>
                         <option value="MICRO MODAL BOXER 102">MICRO MODAL BOXER 102</option>
+                        <option value="SWEAT SHIRT">SWEAT SHIRT</option>
                         <option value="TEXTILE">TEXTILE</option>
                     </select>
                     
@@ -573,6 +574,7 @@
         const qualityData = {
             "MICRO MODAL BRIEF 101": "0.00000",
             "MICRO MODAL BOXER 102": "0.00000",
+            "SWEAT SHIRT": "0.00000",
             "TEXTILE": "0.00000"
         };
 
@@ -581,6 +583,7 @@
         let qualityOrder = [
             "MICRO MODAL BRIEF 101",
             "MICRO MODAL BOXER 102",
+            "SWEAT SHIRT",
             "TEXTILE"
         ];
 
@@ -598,6 +601,7 @@
         const qualityGsmData = {
             "MICRO MODAL BRIEF 101": "0",
             "MICRO MODAL BOXER 102": "0",
+            "SWEAT SHIRT": "0",
             "TEXTILE": "0"
         };
 
@@ -605,12 +609,14 @@
         const qualityFoldingNameData = {
             "MICRO MODAL BRIEF 101": "RIB",
             "MICRO MODAL BOXER 102": "",
+            "SWEAT SHIRT": "",
             "TEXTILE": ""
         };
 
         const qualityFoldingGmData = {
             "MICRO MODAL BRIEF 101": "0.01000",
             "MICRO MODAL BOXER 102": "0.00000",
+            "SWEAT SHIRT": "0.00000",
             "TEXTILE": "0.00000"
         };
 
@@ -618,6 +624,7 @@
         const qualityRemarksData = {
             "MICRO MODAL BRIEF 101": "",
             "MICRO MODAL BOXER 102": "",
+            "SWEAT SHIRT": "",
             "TEXTILE": ""
         };
 
@@ -625,12 +632,14 @@
         const qualityTextileStdConsData = {
             "MICRO MODAL BRIEF 101": "",
             "MICRO MODAL BOXER 102": "",
+            "SWEAT SHIRT": "",
             "TEXTILE": ""
         };
 
         const qualityTextileTotalMetersData = {
             "MICRO MODAL BRIEF 101": "",
             "MICRO MODAL BOXER 102": "",
+            "SWEAT SHIRT": "",
             "TEXTILE": ""
         };
 
@@ -677,6 +686,7 @@
         const qualityTConsConfigData = {
             "MICRO MODAL BRIEF 101": { ...DEFAULT_TCONS_CONFIG },
             "MICRO MODAL BOXER 102": { ...DEFAULT_TCONS_CONFIG },
+            "SWEAT SHIRT": { ...DEFAULT_TCONS_CONFIG },
             "TEXTILE": { ...DEFAULT_TCONS_CONFIG }
         };
 
@@ -934,7 +944,7 @@
 
                 const globalWastage = parseFloat(entry.globalWastage) || 0;
                 const globalMukpat = parseFloat(entry.globalMukpat) || 0;
-                const globalRibWastage = normQuality.includes('GRS') ? (parseFloat(entry.globalRibWastage) || 0) : 0;
+                const globalRibWastage = (normQuality.includes('GRS') || normQuality.includes('SWEAT')) ? (parseFloat(entry.globalRibWastage) || 0) : 0;
                 const poloTotalPocket = (isPoloActive && entry.poloHasPocket !== false) ? (parseFloat(entry.poloTotalPocket) || 0) : 0;
                 const poloTotalPlaket = isPoloActive ? (parseFloat(entry.poloTotalPlaket) || 0) : 0;
                 const pantTotalSidePocket = (isPantActive && entry.pantHasSidePocket !== false) ? (parseFloat(entry.pantTotalSidePocket) || 0) : 0;
@@ -1408,7 +1418,7 @@
         function openAdjModal() {
             const selectEl = document.getElementById('globalQuality');
             const currentQuality = selectEl ? selectEl.value : "";
-            const isGrsActive = currentQuality.toUpperCase().includes('GRS');
+            const isGrsActive = currentQuality.toUpperCase().includes('GRS') || currentQuality.toUpperCase().includes('SWEAT');
             const isPoloActive = currentQuality.toUpperCase().includes('POLO');
             const isPantActive = currentQuality.toUpperCase().includes('PANT');
 
@@ -1438,7 +1448,7 @@
     const isCheckActive = isTextileActive && item.textileCheckMode;
     const isPoloActive = (item.quality || "").toUpperCase().includes('POLO');
     const isPantActive = (item.quality || "").toUpperCase().includes('PANT');
-    const isGrsActive = (item.quality || "").toUpperCase().includes('GRS');
+    const isGrsActive = (item.quality || "").toUpperCase().includes('GRS') || (item.quality || "").toUpperCase().includes('SWEAT');
 
     const fName = item.foldingName || "";
     const fGm = parseFloat(item.foldingGm) || 0;
@@ -1701,7 +1711,7 @@
                     <td class="p-2 border border-gray-300 text-center font-semibold text-blue-700">${it.pics || '0'}</td>
                     <td class="p-2 border border-gray-300 text-center">${bodywt.toFixed(3)}</td>
                     ${hasRibCol ? `<td class="p-2 border border-gray-300 text-center">${ribWt.toFixed(3)}</td>` : ''}
-                    ${hasPktCol ? `<td class="p-2 border border-gray-300 text-center">${pktPlktWt.toFixed(3)}</td>` : ''}
+                    ${hasPktCol ? `<td class="p-2 border border-gray-300 text-center">${poloHasPocket ? 'Pkt+Plkt' : 'Plaket'}</td>` : ''}
                     ${hasFoldingCol ? `<td class="p-2 border border-gray-300 text-center">${foldingWt.toFixed(3)}</td>` : ''}
                     ${hasSidePktCol ? `<td class="p-2 border border-gray-300 text-center">${sidePktWt.toFixed(3)}</td>` : ''}
                     ${hasBackPktCol ? `<td class="p-2 border border-gray-300 text-center">${backPktWt.toFixed(3)}</td>` : ''}
@@ -2087,7 +2097,7 @@
             }
 
             const isFoldingActive = (qualityFoldingNameData[currentQuality] || "").trim() !== "" && parseFloat(qualityFoldingGmData[currentQuality]) > 0;
-            const isGrsActive = currentQuality.toUpperCase().includes('GRS');
+            const isGrsActive = currentQuality.toUpperCase().includes('GRS') || currentQuality.toUpperCase().includes('SWEAT');
             const isPoloActive = currentQuality.toUpperCase().includes('POLO');
             const isPantActive = currentQuality.toUpperCase().includes('PANT');
             const isTextileActive = currentQuality.toUpperCase().includes('TEXTILE');
@@ -2930,7 +2940,7 @@
             const fGm = parseFloat(qualityFoldingGmData[currentQuality]) || 0;
             const isFoldingActive = fName.trim() !== "" && fGm > 0;
             const isTextileActive = currentQuality.toUpperCase().includes('TEXTILE');
-            const isGrsActive = currentQuality.toUpperCase().includes('GRS');
+            const isGrsActive = currentQuality.toUpperCase().includes('GRS') || currentQuality.toUpperCase().includes('SWEAT');
             const isPoloActive = currentQuality.toUpperCase().includes('POLO');
             const isPantActive = currentQuality.toUpperCase().includes('PANT');
 
@@ -3117,7 +3127,7 @@
             const isFoldingActive = fName.trim() !== "" && fGm > 0;
             const isTextileActive = currentQuality.toUpperCase().includes('TEXTILE');
             const isCheckActive = isTextileActive && item.textileCheckMode;
-            const isGrsActive = currentQuality.toUpperCase().includes('GRS');
+            const isGrsActive = currentQuality.toUpperCase().includes('GRS') || currentQuality.toUpperCase().includes('SWEAT');
             const isPoloActive = currentQuality.toUpperCase().includes('POLO');
             const isPantActive = currentQuality.toUpperCase().includes('PANT');
 
@@ -3790,27 +3800,30 @@
                 for (let key in qualityPantSidePocketData) delete qualityPantSidePocketData[key];
                 for (let key in qualityPantBackPocketData) delete qualityPantBackPocketData[key];
                 
-                qualityData["MICRO MODAL BRIEF 101"] = "0.00000";
-                qualityData["MICRO MODAL BOXER 102"] = "0.00000";
-                qualityData["TEXTILE"] = "0.00000";
-                qualityOrder = ["MICRO MODAL BRIEF 101", "MICRO MODAL BOXER 102", "TEXTILE"];
+                qualityOrder = ["MICRO MODAL BRIEF 101", "MICRO MODAL BOXER 102", "SWEAT SHIRT", "TEXTILE"];
                 qualityGsmData["MICRO MODAL BRIEF 101"] = "0";
                 qualityGsmData["MICRO MODAL BOXER 102"] = "0";
+                qualityGsmData["SWEAT SHIRT"] = "0";
                 qualityGsmData["TEXTILE"] = "0";
                 qualityFoldingNameData["MICRO MODAL BRIEF 101"] = "RIB";
                 qualityFoldingNameData["MICRO MODAL BOXER 102"] = "";
+                qualityFoldingNameData["SWEAT SHIRT"] = "";
                 qualityFoldingNameData["TEXTILE"] = "";
                 qualityFoldingGmData["MICRO MODAL BRIEF 101"] = "0.01000";
                 qualityFoldingGmData["MICRO MODAL BOXER 102"] = "0.00000";
+                qualityFoldingGmData["SWEAT SHIRT"] = "0.00000";
                 qualityFoldingGmData["TEXTILE"] = "0.00000";
                 qualityRemarksData["MICRO MODAL BRIEF 101"] = "";
                 qualityRemarksData["MICRO MODAL BOXER 102"] = "";
+                qualityRemarksData["SWEAT SHIRT"] = "";
                 qualityRemarksData["TEXTILE"] = "";
                 qualityTextileStdConsData["MICRO MODAL BRIEF 101"] = "";
                 qualityTextileStdConsData["MICRO MODAL BOXER 102"] = "";
+                qualityTextileStdConsData["SWEAT SHIRT"] = "";
                 qualityTextileStdConsData["TEXTILE"] = "";
                 qualityTextileTotalMetersData["MICRO MODAL BRIEF 101"] = "";
                 qualityTextileTotalMetersData["MICRO MODAL BOXER 102"] = "";
+                qualityTextileTotalMetersData["SWEAT SHIRT"] = "";
                 qualityTextileTotalMetersData["TEXTILE"] = "";
 
                 renderQualityDropdown("MICRO MODAL BRIEF 101");
