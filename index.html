@@ -57,17 +57,17 @@
         .cloud-status.syncing .dot{background:#f59e0b;animation:pulseCloud 1s infinite}
         @keyframes pulseCloud{50%{opacity:.35;transform:scale(.75)}}
 
-        /* Vertical Row-by-Row Black & White Contrast Striping for Easy Focus */
-        #itemRows tr:nth-child(odd) {
-            background-color: #ffffff;
-        }
-        #itemRows tr:nth-child(even) {
+        /* Vertical Column-by-Column (উপর থেকে নিচে) Striping for easy focus */
+        #itemRows tr td:nth-child(even):not(.bg-blue-50\/50):not(.bg-purple-50\/50) {
             background-color: #f1f5f9;
         }
-        #itemRows tr:nth-child(even) input:not([disabled]) {
+        #itemRows tr td:nth-child(odd):not(.bg-blue-50\/50):not(.bg-purple-50\/50) {
             background-color: #ffffff;
         }
-        #itemRows tr:hover {
+        #itemRows tr td input {
+            background-color: transparent;
+        }
+        #itemRows tr:hover td {
             background-color: #e2e8f0 !important;
         }
     </style>
@@ -173,7 +173,7 @@
 
                     <div class="flex flex-col items-center gap-1 flex-1 min-w-0">
                         <span class="font-bold text-gray-700 text-[10px] sm:text-[11px] tracking-wide text-center block h-8 flex items-center justify-center">STANDARD GSM</span>
-                        <input type="text" id="gsmInput" placeholder="GSM" class="border border-gray-300 focus:outline-none p-1 rounded bg-white w-full max-w-[96px] text-center font-semibold text-gray-800" oninput="this.value = this.value.toUpperCase(); updateGsm(this.value)" onblur="if(this.value!='' && !isNaN(this.value)) { this.value=parseFloat(this.value); updateGsm(this.value); }">
+                        <input type="text" id="gsmInput" placeholder="GSM" class="border border-gray-300 focus:outline-none p-1 rounded bg-white w-full max-w-[96px] text-center font-semibold text-gray-800" oninput="this.value = this.value.toUpperCase(); updateGsm(this.value)" onblur="if(this.value!='' && !isNaN(this.value)) { this.value=parseFloat(this.value).toFixed(3); updateGsm(this.value); }">
                     </div>
 
                     <div class="flex flex-col items-center gap-1 flex-1 min-w-0">
@@ -281,7 +281,7 @@
                             <input type="number" step="0.001" min="0" id="poloTotalPlaketInput" placeholder="0.000" class="border border-gray-300 focus:outline-none p-1 rounded bg-white w-full text-center font-semibold text-gray-800 text-xs" oninput="calculateTotals()" onblur="if(this.value!='') this.value=parseFloat(this.value).toFixed(3); calculateTotals();">
                         </div>
                         <div id="globalByPlaketDiv" class="flex flex-col items-center gap-1 flex-1 min-w-0">
-                            <span class="font-bold text-gray-600 text-[9px] tracking-wide text-center block h-6 flex items-center justify-center">BY-PLAKET WT</span>
+                            <span class="font-bold text-gray-600 text-[9px] tracking-wide text-center block h-6 flex items-center justify-center">BY-PLKT WT</span>
                             <input type="number" step="0.001" min="0" id="poloTotalByPlaketInput" placeholder="0.000" class="border border-gray-300 focus:outline-none p-1 rounded bg-white w-full text-center font-semibold text-gray-800 text-xs" oninput="calculateTotals()" onblur="if(this.value!='') this.value=parseFloat(this.value).toFixed(3); calculateTotals();">
                         </div>
                         <div class="flex flex-col items-center gap-1 flex-1 min-w-0">
@@ -681,7 +681,7 @@
             collar: "Collar & Cuff Weight",
             sidePkt: "Side Pocket Weight",
             backPkt: "Back Pocket Weight",
-            wastage: "Lay Wastage Weight",
+            wastage: "Wastage Weight",
             byPlaketWastage: "By-Plaket Wastage Weight",
             mukpat: "Mukpat Weight",
             ribWastage: "Rib Wastage Weight"
@@ -1598,7 +1598,7 @@
     let weightsHtml = `<span>WASTAGE WT: <b>${parseFloat(item.globalWastage || 0).toFixed(3)}</b></span>`;
     if (!isTextileActive) weightsHtml += `<span>MUKPAT WT: <b>${parseFloat(item.globalMukpat || 0).toFixed(3)}</b></span>`;
     if (isGrsActive && parseFloat(item.globalRibWastage || 0) > 0) weightsHtml += `<span>RIB WASTAGE: <b>${parseFloat(item.globalRibWastage).toFixed(3)}</b></span>`;
-    if (isGrsActive && parseFloat(item.globalRibTotal || 0) > 0) weightsHtml += `<span>RIB WT: <b>${parseFloat(item.globalRibTotal).toFixed(3)}</b></span>`;
+    if (isGrsActive && parseFloat(item.globalRibTotal !== undefined ? item.globalRibTotal : (item.globalTotalRib || 0)) > 0) weightsHtml += `<span>RIB WT: <b>${parseFloat(item.globalRibTotal !== undefined ? item.globalRibTotal : (item.globalTotalRib || 0)).toFixed(3)}</b></span>`;
     if (poloHasPocket && parseFloat(item.poloTotalPocket || 0) > 0) weightsHtml += `<span>PKT WT: <b>${parseFloat(item.poloTotalPocket).toFixed(3)}</b></span>`;
     if (isPoloActive && parseFloat(item.poloTotalPlaket || 0) > 0) weightsHtml += `<span>PLKT WT: <b>${parseFloat(item.poloTotalPlaket).toFixed(3)}</b></span>`;
     if (poloHasByPlaket && parseFloat(item.poloTotalByPlaket || 0) > 0) weightsHtml += `<span>BY-PLKT WT: <b>${parseFloat(item.poloTotalByPlaket).toFixed(3)}</b></span>`;
@@ -1617,7 +1617,7 @@
     const globalMukpat = parseFloat(item.globalMukpat) || 0;
     const globalByPlaketWastage = (isPoloActive && poloHasByPlaket) ? (parseFloat(item.poloTotalByPlaketWastage) || 0) : 0;
     const globalRibWastage = isGrsActive ? (parseFloat(item.globalRibWastage) || 0) : 0;
-    const globalRibTotal = isGrsActive ? (parseFloat(item.globalRibTotal) || 0) : 0;
+    const globalRibTotal = isGrsActive ? (parseFloat(item.globalRibTotal !== undefined ? item.globalRibTotal : (item.globalTotalRib || 0)) || 0) : 0;
     const totalPocketGlobal = (isPoloActive && poloHasPocket) ? (parseFloat(item.poloTotalPocket) || 0) : 0;
     const totalPlaketGlobal = isPoloActive ? (parseFloat(item.poloTotalPlaket) || 0) : 0;
     const totalByPlaketGlobal = (isPoloActive && poloHasByPlaket) ? (parseFloat(item.poloTotalByPlaket) || 0) : 0;
@@ -1746,10 +1746,10 @@
                     ribWt += ribWt * adjFactor * adjSign;
                 }
                 if (chkPocket && isPoloActive) {
-                            pocketWt += pocketWt * adjFactor * adjSign;
-                            plaketWt += plaketWt * adjFactor * adjSign;
-                            pktPlktWt = pocketWt + plaketWt;
-                        }
+                    pocketWt += pocketWt * adjFactor * adjSign;
+                    plaketWt += plaketWt * adjFactor * adjSign;
+                    pktPlktWt = pocketWt + plaketWt;
+                }
                 if (chkSidePkt && isPantActive && pantHasSidePocket) {
                     sidePktWt += sidePktWt * adjFactor * adjSign;
                 }
@@ -3200,7 +3200,7 @@
             const globalMukpat = parseFloat(item.globalMukpat) || 0;
             const globalByPlaketWastage = (isPoloActive && poloHasByPlaket) ? (parseFloat(item.poloTotalByPlaketWastage) || 0) : 0;
             const globalRibWastage = isGrsActive ? (parseFloat(item.globalRibWastage) || 0) : 0;
-            const globalRibTotal = isGrsActive ? (parseFloat(item.globalRibTotal) || 0) : 0;
+            const globalRibTotal = isGrsActive ? (parseFloat(item.globalRibTotal !== undefined ? item.globalRibTotal : (item.globalTotalRib || 0)) || 0) : 0;
             const totalPocketGlobal = (isPoloActive && poloHasPocket) ? (parseFloat(item.poloTotalPocket) || 0) : 0;
             const totalPlaketGlobal = isPoloActive ? (parseFloat(item.poloTotalPlaket) || 0) : 0;
             const totalByPlaketGlobal = (isPoloActive && poloHasByPlaket) ? (parseFloat(item.poloTotalByPlaket) || 0) : 0;
@@ -3349,6 +3349,7 @@
 
                             rowTds.push(parseFloat(bodywt.toFixed(3)).toFixed(3));
                             rowTds.push(rowWastageRounded.toFixed(3));
+                            rowTotalWeightRounded.toFixed(3);
                             rowTds.push(rowTotalWeightRounded.toFixed(3));
                             rowTds.push(grandBCons.toFixed(5));
                             rowTds.push(grandTCons.toFixed(5));
@@ -3373,7 +3374,7 @@
 
                         let layWastagePart = totalPicsSum > 0 ? (pics / totalPicsSum) * globalWastage : 0;
                         let byPlaketWastagePart = totalPicsSum > 0 ? (pics / totalPicsSum) * globalByPlaketWastage : 0;
-                        let ribWastagePart = totalPicsSum > 0 ? (pics / totalPicsSum) * globalRibWastage : 0;
+                        let ribWastagePart = isGrsActive ? (totalPicsSum > 0 ? (pics / totalPicsSum) * globalRibWastage : 0) : 0;
                         let rowMukpatPart = totalPicsSum > 0 ? (pics / totalPicsSum) * globalMukpat : 0;
                         let rowWastagePart = layWastagePart + byPlaketWastagePart + ribWastagePart;
                         let mainWastageOnlyPart = layWastagePart;
@@ -3544,7 +3545,7 @@
 
             let extraWeightsHtml = `<span>WASTAGE WT: <b>${adjWst.toFixed(3)}</b></span>`;
             if (!isTextileActive) extraWeightsHtml += `<span>MUKPAT WT: <b>${adjMkpt.toFixed(3)}</b></span>`;
-            if (isGrsActive && ribWst > 0) extraWeightsHtml += `<span>RIB WASTAGE: <b>${adjRibWst.toFixed(3)}</b></span>`;
+            if (isGrsActive && adjRibWst > 0) extraWeightsHtml += `<span>RIB WASTAGE: <b>${adjRibWst.toFixed(3)}</b></span>`;
             if (isGrsActive && adjRibTotal > 0) extraWeightsHtml += `<span>RIB WT: <b>${adjRibTotal.toFixed(3)}</b></span>`;
             if (isPoloActive && adjPkt > 0) extraWeightsHtml += `<span>PKT WT: <b>${adjPkt.toFixed(3)}</b></span>`;
             if (isPoloActive && adjPlkt > 0) extraWeightsHtml += `<span>PLKT WT: <b>${adjPlkt.toFixed(3)}</b></span>`;
@@ -4451,7 +4452,7 @@
                 const totalByPlktWst = parseFloat(item.poloTotalByPlaketWastage) || 0;
                 const totalRibWst = parseFloat(item.globalRibWastage) || 0;
                 if (totalWst > 0 || totalMkpt > 0 || totalByPlktWst > 0 || totalRibWst > 0) {
-                    wastageInfoStr = `<span>Wst/Mkpt/By-Plkt Wst/Rib Wst: <span class="text-gray-700">${(totalWst + totalMkpt + totalByPlktWst + totalRibWst).toFixed(3)}kg</span></span>`;
+                    wastageInfoStr = `<span>Wst/Mukpat/By-Plkt Wst/Rib Wst: <span class="text-gray-700">${(totalWst + totalMkpt + totalByPlktWst + totalRibWst).toFixed(3)}kg</span></span>`;
                 }
 
                 let textileInfoStr = "";
